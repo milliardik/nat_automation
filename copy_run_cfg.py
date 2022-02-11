@@ -15,14 +15,14 @@ PATH_TO_RESULT_DIR = BASEDIR.joinpath('instruction_and_cfg')
 @click.option(
     '--inventory-file',
     type=click.Path(exists=True),
-    default=str(BASEDIR.joinpath('inventory_file.yaml')), show_default='inventory_file.yaml')
+    default=str(INVENTORY_FILE), show_default=str(INVENTORY_FILE))
 def cli(groups, username, password, inventory_file):
-    devices = get_devices(groups, INVENTORY_FILE)
+    devices = get_devices(groups, inventory_file)
 
     for device in devices:
         host = device.get('host')
         platform = device.get('platform')
-        conn = connect_open(host, username, password, platform)
+        conn = connect_open(host, username, password, platform=platform)
 
         if conn:
             hostname = conn.get_prompt()[:-1]

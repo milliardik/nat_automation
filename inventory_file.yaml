@@ -1,4 +1,6 @@
 all:
+  172.30.22.7:
+    platform: cisco_iosxe
   192.168.0.1:
     platform: cisco_iosxe
   192.168.0.5:

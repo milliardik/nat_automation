@@ -1,3 +1,5 @@
+import pprint
+
 import click
 import yaml
 import time
@@ -10,7 +12,7 @@ from scrapli import Scrapli
 from scrapli.helper import textfsm_parse
 from scrapli.exceptions import ScrapliAuthenticationFailed, ScrapliConnectionNotOpened
 
-from dns.resolver import resolve
+from dns.resolver import resolve, NXDOMAIN
 
 from configurations import *
 
@@ -46,12 +48,17 @@ def load_data_form_file(path_to_file: Path) -> tuple[int, list]:
                 # Разобраться, какой устанавливать ttl для адресов. [min_ttl]
                 ttl, addresses = 10000, [IPv4Interface(ip_address)]
             else:
-                ttl, addresses = dns_lookup(row)
-                addresses = [IPv4Interface(f'{ip}/32') for ip in addresses]
+                try:
+                    ttl, addresses = dns_lookup(row)
+                    addresses = [IPv4Interface(f'{ip}/32') for ip in addresses]
+                except NXDOMAIN:
+                    logger.log(logging.CRITICAL, f'Не распознаное имя {row}')
+                    continue
 
             min_ttl = ttl if ttl < min_ttl else min_ttl
 
             result.extend(addresses)
+
         logger.log(logging.INFO, f'Данные {path_to_file} загрежены')
         logger.log(logging.INFO, f'Минимальный ttl = {min_ttl}')
 
@@ -75,7 +82,7 @@ def get_devices(groups: list, path_to_file: Path) -> list[dict]:
     all_ = data.get('all', [])
 
     if 'all' in groups:
-        result.extend([dict(ip=k, **all_[k]) for k in all_])
+        result.extend([dict(host=k, **all_[k]) for k in all_])
     else:
         for gname in groups:
             if validate_ip(gname):
@@ -91,68 +98,59 @@ def get_devices(groups: list, path_to_file: Path) -> list[dict]:
     return result
 
 
-def create_acl_cfg(conn: Scrapli, dst_interfaces: list[IPv4Interface], acl_name: str) -> str:
-    def create_str(ip_interface: IPv4Interface) -> str:
-        ip, prefix = ip_interface.with_hostmask.split('/')
+def get_srs_or_dest(row: dict, dst=False) -> IPv4Interface:
+    prefix = 'src_' if not dst else 'dst_'
 
-        if prefix == '0.0.0.0':
-            result_str = f'host {ip}'
-        else:
-            result_str = f'{ip} {prefix}'
+    host = prefix + 'host'
+    network = prefix + 'network'
+    wildcard = prefix + 'wildcard'
 
-        return result_str
+    if not row[host]:
+        result_str = f'{row.get(network)}/{row.get(wildcard)}'
+    else:
+        result_str = row.get(host) + '/32'
 
-    rows = list()
-    row_tpl = 'access-list {acl_name} permit ip {source} {destination}'
+    return IPv4Interface(result_str)
+
+
+def iface_to_str(ip_interface: IPv4Interface, with_='with_hostmask') -> str:
+    ip, prefix = getattr(ip_interface, with_).split('/')
+
+    if prefix == '0.0.0.0':
+        result_str = f'host {ip}'
+    else:
+        result_str = f'{ip} {prefix}'
+
+    return result_str
+
+
+def create_acl_cfg(conn: Scrapli, dst_interfaces: list[IPv4Interface], acl_name: str) -> list:
+    rows = [f'ip access-list ex {acl_name}']
+    row_tpl = 'permit ip {source} {destination}'
+    textfsm_tpl = BASEDIR.joinpath('cisco_ios_show_ip_access-lists.textfsm')
 
     cur_acl_cfg = conn.send_command(f'show ip access-list {acl_name}').result
 
     if not cur_acl_cfg:
-        logger.log(logging.ERROR, f'Список доступа {acl_name} отсутствует')
-        sys.exit(1)
+        logger.log(logging.CRITICAL, f' Список доступа {acl_name} отсутствует')
 
-    srs_interfaces = set(get_srs_from_acl(cur_acl_cfg))
+    parsed_data = textfsm_parse(textfsm_tpl, cur_acl_cfg)[1:]
+    srs_interfaces = set([get_srs_or_dest(row) for row in parsed_data])
 
-    for srs_interface in srs_interfaces:
-        srs_str = create_str(srs_interface)
-        for dst_interface in dst_interfaces:
-            dst_str = create_str(dst_interface)
-            rows.append(row_tpl.format(acl_name=acl_name, source=srs_str, destination=dst_str))
+    for cur_acl_row in parsed_data:
+        src = get_srs_or_dest(cur_acl_row)
+        dst = get_srs_or_dest(cur_acl_row, dst=True)
 
-    rows.insert(0, f'access-list {acl_name} permit ip 10.0.0.0 0.0.0.255 host 3.3.3.3')
-    logger.log(logging.INFO, f'Создан новая конфигурация для списка {acl_name}')
+        if dst in dst_interfaces:
+            dst_interfaces.remove(dst)
+        else:
+            rows.append('no ' + row_tpl.format(source=iface_to_str(src), destination=iface_to_str(dst)))
 
-    return '\n'.join(rows)
+    for dst in dst_interfaces:
+        for src in srs_interfaces:
+            rows.append(row_tpl.format(source=iface_to_str(src), destination=iface_to_str(dst)))
 
-
-def get_srs_from_acl(acl_cfg: str) -> list[IPv4Interface]:
-    textfsm_tpl = BASEDIR.joinpath('cisco_ios_show_ip_access-lists.textfsm')
-    result = []
-
-    if textfsm_tpl.exists():
-        with textfsm_tpl.open() as f:
-            rows = textfsm_parse(f, acl_cfg)
-    else:
-        # raise
-        print(f'{str(textfsm_tpl)} not exists')
-
-    for row in rows:
-        result_str = ''
-        if row.get('src_host'):
-            result_str = row.get("src_host")+'/32'
-        elif row.get('src_network'):
-            result_str = f'{row.get("src_network")}/{row.get("src_wildcard")}'
-
-        if result_str:
-            result.append(IPv4Interface(result_str))
-
-    return result
-
-
-def delete_acl(conn: Scrapli, acl_name: str) -> bool:
-    result = conn.send_config(f'no ip access-list extended {acl_name}')
-    logger.log(logging.INFO, f'Старый спсиок доступа {acl_name} удален успешно.')
-    return not result.failed
+    return rows
 
 
 def check_port_alive(host: str, port=22) -> bool:
@@ -206,7 +204,7 @@ def connect_open(
         transport='ssh',
         **kwargs) -> [Scrapli, bool]:
 
-    loglevel = logging.ERROR
+    loglevel = logging.CRITICAL
     msg = f'Подключение к утройству {host} выполнено'
 
     result = False
@@ -238,7 +236,7 @@ def connect_open(
 
 
 def connect_close(conn):
-    conn.send_command('copy running-config startup-config')
+    # conn.send_command('copy running-config startup-config')
     conn.close()
 
 
@@ -250,7 +248,7 @@ def connect_close(conn):
 @click.option(
     '--inventory-file',
     type=click.Path(exists=True),
-    default=str(BASEDIR.joinpath('inventory_file.yaml')), show_default='inventory_file.yaml')
+    default=str(INVENTORY_FILE), show_default=str(INVENTORY_FILE))
 def cli(username, password, inventory_file, groups, acl_name):
     devices = get_devices(groups, inventory_file)
 
@@ -258,11 +256,12 @@ def cli(username, password, inventory_file, groups, acl_name):
         min_ttl, destination_hosts = load_data_form_file(INPUT_DATA_FILE)
 
         if min_ttl == 0:
+            time.sleep(2)
             continue
 
         start_time = time.time()
 
-        create_loiface('1.1.1.1', destination_hosts, username, password)
+        # create_loiface('1.1.1.1', destination_hosts, username, password)
 
         for device in devices:
             host = device.get('host')
@@ -270,26 +269,26 @@ def cli(username, password, inventory_file, groups, acl_name):
 
             conn = connect_open(host, username, password, platform=platform)
 
-            if not conn:
-                continue
+            if conn:
+                acl_cfg = create_acl_cfg(conn, destination_hosts.copy(), acl_name)
+                if len(acl_cfg) == 1:
+                    logger.log(logging.INFO, 'Изменения не требуются.')
+                    break
+                # else:
+                pprint.pprint(acl_cfg)
+                conn.send_configs(acl_cfg)
+                logger.log(logging.INFO, 'Изменения применены успешно.')
+                connect_close(conn)
+            else:
+                pass
 
-            acl_cfg = create_acl_cfg(conn, destination_hosts, acl_name)
-            delete_acl(conn, acl_name)
-            conn.send_config(acl_cfg)
-            logger.log(logging.INFO, 'Новый спсиок доступа применен успешно.')
+        min_ttl -= int(time.time() - start_time - 1)
 
-            connect_close(conn)
-
-        min_ttl -= int(time.time() - start_time)
-
-        if min_ttl <= 0:
-            continue
-
-        logger.log(logging.INFO, f'Ожидание {min_ttl} сек ...')
-
-        with click.progressbar(range(min_ttl)) as bar:
-            for _ in bar:
-                time.sleep(1)
+        if min_ttl > 0:
+            logger.log(logging.INFO, f'Ожидание {min_ttl} сек ...')
+            with click.progressbar(range(min_ttl)) as bar:
+                for _ in bar:
+                    time.sleep(1)
 
         click.clear()
 

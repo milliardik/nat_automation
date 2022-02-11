@@ -1,6 +1,8 @@
 Building configuration...
 
-Current configuration : 2467 bytes
+Current configuration : 2552 bytes
+!
+! Last configuration change at 14:26:54 EET Fri Feb 11 2022 by cisco
 !
 version 15.4
 service timestamps debug datetime msec
@@ -100,6 +102,7 @@ interface Ethernet0/3
 !
 router bgp 65001
  bgp log-neighbor-changes
+ timers bgp 3 9
  neighbor 192.168.0.2 remote-as 65001
  neighbor 192.168.0.10 remote-as 65002
  !
@@ -142,7 +145,7 @@ access-list 1 permit 20.20.20.20
 access-list 1 permit 30.30.30.30
 access-list 120 permit ip 10.0.0.0 0.0.0.255 host 1.1.1.1
 access-list 120 permit ip 10.0.0.0 0.0.0.255 host 2.2.2.2
-access-list 130 permit ip 10.0.0.0 0.0.0.255 host 3.3.3.3
+access-list 130 permit ip 10.0.0.0 0.0.0.3 host 3.3.3.3
 !
 !
 !
