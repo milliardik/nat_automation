@@ -1,0 +1,173 @@
+﻿Условия, оборудование предварительно смонтировано и подключено согласно схеме. Применены настройки aaa, настроеные vty и консольные линии
+Настройка интерфейсов устройств.
+	1. Настройка NXOS. Применить следующую конфигурацию в конфигурационном режиме:
+		interface ethernet1/3
+		 no switchport
+		 ip address 10.0.0.254 255.255.255.0
+		 no shutdown
+		!
+		interface ethernet1/1
+		 no switchport 
+		 ip address 192.168.0.6 255.255.255.252
+		 no shutdown
+		!
+		interface ethernet1/2
+		 no switchport 
+		 ip address 192.168.0.2 255.255.255.252
+		 no shutdown                                         
+		!
+	2. Настройка VPC. 
+		2.1 Применить адрес 10.0.0.1/24 10.0.0.254
+		2.2 Проверить доступность адреса 10.0.0.254 (icmp)
+		2.3 Поиск и устранение неисправностей
+	3. Настройка устройства NAT1. 
+		3.1 Применить следующую конфигурацию в конфигурационном режиме:
+			interface gigabitethernet1
+			 ip address 192.168.0.5 255.255.255.252
+			 no shutdown
+			!
+			interface gigabitethernet2
+			 ip address 192.168.0.13 255.255.255.252
+			 no shutdown
+			!
+		3.2 Проверить доступность адреса сосдеа 192.168.0.6 (icmp) 
+		3.3 Поиск и устранение неисправностей
+	4. Настройка устройства NAT2. 
+		4.1 Применить следующую	конфигурацию в конфигурационном режиме:
+			interface gigabitethernet1
+			 ip address 192.168.0.1 255.255.255.252
+			 no shutdown
+			!
+			interface gigabitethernet2
+			 ip address 192.168.0.9 255.255.255.252
+			 no shutdown
+			!
+		4.2 Проверить доступность адреса сосдеа 192.168.0.2 (icmp) 
+		4.3 Поиск и устранение неисправностей
+	5. Настройка устройства CSR
+		5.1 Применить следующую	конфигурацию в конфигурационном режиме:
+			interface gigabitethernet1
+			 ip address 192.168.0.14 255.255.255.252
+			 no shutdown
+			!
+			interface gigabitethernet2
+			 ip address 192.168.0.10 255.255.255.252
+			 no shutdown
+			!
+		4.2 Проверить доступность адресов соседей 192.168.0.9 и 192.168.0.13 (icmp) 
+		4.3 Поиск и устранение неисправностей
+#########################################################
+Настройка iBGP
+	1. NXOS, настройки применятся в конфигурационном режиме
+		1.1 включить сервис/протокол bgp выполнив команду feature bgp
+		1.2 Применить следующую конфигурацию протокла
+			router bgp 65001
+			 neighbor 192.168.0.5 remote-as 65001
+			  address-family ipv4 unicast
+			 neighbor 192.168.0.1 remote-as 65001
+			  address-family ipv4 unicast
+			 address-family ipv4 unicast
+			  network 10.0.0.0 mask 255.255.255.0
+			  maximum-paths ibgp 2
+	2. NAT1
+		2.1 Создать правила фильтрации применив следующий конфиг 
+		    ip access-list standart CSR_OUT
+			 permit 10.10.10.10
+			 permit 30.30.30.30
+			route-map CSR_OUT permit 10
+			 match ip address CSR_OUT
+		2.2 Применить следующую конфигурация протокола маршрутизации
+			router bgp 65001
+			 neighbor 192.168.0.6 remote-as 65001
+			 neighbor 192.168.0.14 remote-as 65002
+			 address-family ipv4 unicast
+			  network 10.10.10.10 mask 255.255.255.255
+			  network 30.30.30.30 mask 255.255.255.255
+			  neighbor 192.168.0.6 next-hop-self
+			  neighbor 192.168.0.14 route-map CSR_OUT out
+		2.3 Создать правило отслеживания состояни порта
+			track 1 interface gigabitethernet2 line-protocol 
+		2.4 Создать статический маршрут до сети 10.10.10.10 на интерфейс Null0
+			ip route 10.10.10.10 255.255.255.255 Null0 track 1
+			ip route 30.30.30.30 255.255.255.255 Null0 track 1
+		2.5 Проверить становление соседства с устройством NXOS, проверить наличие маршрута до сети 10.0.0.0/24
+			show ip bgp neighbor 192.168.0.6
+			см. строку BGP state = Established
+	3. NAT2
+		3.1 Создать правила фильтрации применив следующий конфиг 
+		    ip access-list standart CSR_OUT
+			 permit 20.20.20.20
+			 permit 30.30.30.30
+			route-map CSR_OUT permit 10
+			 match ip address CSR_OUT
+			 set metric 50
+		3.2 Применить следующую конфигурация протокола маршрутизации
+			router bgp 65001
+			 neighbor 192.168.0.2 remote-as 65001
+			 neighbor 192.168.0.10 remote-as 65002
+			 address-family ipv4 unicast
+			  network 20.20.20.20 mask 255.255.255.255
+			  network 30.30.30.30 mask 255.255.255.255
+			  neighbor 192.168.0.2 next-hop-self
+			  neighbor 192.168.0.10 route-map CSR_OUT out
+		3.3 Создать правило отслеживания состояни порта
+			track 1 interface gigabitethernet2 line-protocol 
+		3.4 Создать статические маршруты
+			ip route 20.20.20.20 255.255.255.255 Null0 track 1
+			ip route 30.30.30.30 255.255.255.255 Null0 track 1
+		3.5 Проверить становление соседства с устройством NXOS, проверить наличие маршрута до сети 10.0.0.0/24
+			show ip bgp neighbor 192.168.0.2
+			см. строку BGP state = Established
+	4. CSR
+		4.1 Применить следующую конфигурация протокола маршрутизации
+			router bgp 65002
+			 neighbor 192.168.0.13 remote-as 65001
+			 neighbor 192.168.0.9 remote-as 65001
+			 address-family ipv4 unicast
+			  redistribute connected
+		4.2 Проверить становление соседства с устройствами NAT1 и NAT2, проверить таблицу bgp на наличие/отсутствие маршрутов
+	5. NXOS
+		5.1 Проверить наличие маршрутов до сетей анонсируемых устройством CSR
+###############################################################		
+Настройка NAT
+	1. NAT1
+		1.1 Создание фильтрующих список
+			ip access-list extended 110
+			 permit ip 10.0.0.0 0.0.0.255 host 1.1.1.1
+			 permit ip 10.0.0.0 0.0.0.255 host 2.2.2.2
+			ip access-list extended 130
+			 permit ip 10.0.0.0 0.0.0.255 host 3.3.3.3
+		1.2 Создание правил трансляции адресов
+			ip nat pool NAT10 10.10.10.10 10.10.10.10 netmask 255.255.255.0
+			ip nat pool NAT30 30.30.30.30 30.30.30.30 netmask 255.255.255.0
+			ip nat inside source list 110 pool NAT10 overload
+			ip nat inside source list 130 pool NAT30 overload
+		1.3 Включение трансляции на интерфейсах
+			interface gigabitethernet1
+			 ip nat inside
+			!
+			interface gigabitethernet2
+			 ip nat outside
+	2. NAT2
+		2.1 Создание фильтрующих список
+			ip access-list extended 120
+			 permit ip 10.0.0.0 0.0.0.255 host 1.1.1.1
+			 permit ip 10.0.0.0 0.0.0.255 host 2.2.2.2
+			!
+			ip access-list extended 130
+			 permit ip 10.0.0.0 0.0.0.255 host 3.3.3.3
+		2.2 Создание правил трансляции адресов
+			ip nat pool NAT20 20.20.20.20 20.20.20.20 netmask 255.255.255.0
+			ip nat pool NAT30 30.30.30.30 30.30.30.30 netmask 255.255.255.0
+			ip nat inside source list 120 pool NAT20 overload
+			ip nat inside source list 130 pool NAT30 overload
+		2.3 Включение трансляции на интерфейсах
+			interface gigabitethernet1
+			 ip nat inside
+			!
+			interface gigabitethernet2
+			 ip nat outside
+	3. VPC
+		3.1 Проверка icmp доступности адресов 1.1.1.1, 2.2.2.2 и 3.3.3.3. Вовремя проверки отключить на одном из устройств NAT1 и NAT2 порта к gigabitethernet2 (к устройству CSR)
+		ПОиск и устранение неисправностей
+###############################################################

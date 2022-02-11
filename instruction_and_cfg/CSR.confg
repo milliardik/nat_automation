@@ -1,0 +1,149 @@
+=~=~=~=~=~=~=~=~=~=~=~= PuTTY log 2022.02.10 11:41:21 =~=~=~=~=~=~=~=~=~=~=~=
+sh run 
+Building configuration...
+
+Current configuration : 1657 bytes
+!
+! Last configuration change at 11:06:52 EET Thu Feb 10 2022 by cisco
+!
+version 15.4
+service timestamps debug datetime msec
+service timestamps log datetime msec
+no service password-encryption
+!
+hostname CSR
+!
+boot-start-marker
+boot-end-marker
+!
+!
+no logging console
+!
+aaa new-model
+!
+!
+aaa authentication login default local
+aaa authorization console
+aaa authorization exec default local 
+!
+!
+!
+!
+!
+aaa session-id common
+clock timezone EET 2 0
+mmi polling-interval 60
+no mmi auto-configure
+no mmi pvc
+mmi snmp-timeout 180
+!
+!
+!
+!
+!
+!
+!
+!
+
+
+!
+!
+!
+!
+no ip domain lookup
+ip domain name local
+ip cef
+no ipv6 cef
+!
+multilink bundle-name authenticated
+!
+!
+!
+!
+!
+!
+!
+!
+username cisco privilege 15 secret 5 $1$dbY.$96nNEMF8fx7.iiyGwAjKJ.
+!
+redundancy
+!
+!
+! 
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+interface Loopback0
+ ip address 1.1.1.1 255.255.255.255
+!
+interface Loopback1
+ ip address 2.2.2.2 255.255.255.255
+!
+interface Loopback2
+ ip address 3.3.3.3 255.255.255.255
+!
+interface Ethernet0/0
+ no ip address
+ shutdown
+!
+interface Ethernet0/1
+ ip address 192.168.0.14 255.255.255.252
+!
+interface Ethernet0/2
+ ip address 192.168.0.10 255.255.255.252
+!
+interface Ethernet0/3
+ no ip address
+ shutdown
+!
+router bgp 65002
+ bgp log-neighbor-changes
+ timers bgp 20 60
+ neighbor 192.168.0.9 remote-as 65001
+ neighbor 192.168.0.13 remote-as 65001
+ !
+ address-family ipv4
+  redistribute connected
+  neighbor 192.168.0.9 activate
+  neighbor 192.168.0.13 activate
+ exit-address-family
+!
+ip forward-protocol nd
+!
+!
+no ip http server
+no ip http secure-server
+!
+!
+!
+!
+!
+!
+control-plane
+!
+!
+!
+!
+!
+!
+!
+!
+line con 0
+ logging synchronous
+line aux 0
+line vty 0 4
+ transport input telnet ssh
+!
+!
+end
+
+CSR#
