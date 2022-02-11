@@ -1,8 +1,6 @@
-=~=~=~=~=~=~=~=~=~=~=~= PuTTY log 2022.02.10 11:40:21 =~=~=~=~=~=~=~=~=~=~=~=
-sh run 
 Building configuration...
 
-Current configuration : 2379 bytes
+Current configuration : 2467 bytes
 !
 version 15.4
 service timestamps debug datetime msec
@@ -22,7 +20,7 @@ aaa new-model
 !
 aaa authentication login default local
 aaa authorization console
-aaa authorization exec default local 
+aaa authorization exec default local
 !
 !
 !
@@ -69,7 +67,7 @@ redundancy
 !
 track 1 interface Ethernet0/2 line-protocol
 !
-! 
+!
 !
 !
 !
@@ -111,6 +109,7 @@ router bgp 65001
   neighbor 192.168.0.2 activate
   neighbor 192.168.0.2 next-hop-self
   neighbor 192.168.0.10 activate
+  neighbor 192.168.0.10 route-map CSR_IN in
   neighbor 192.168.0.10 route-map CSR_OUT out
  exit-address-family
 !
@@ -130,6 +129,9 @@ ip access-list standard locaonly
  deny   10.0.0.0 0.0.0.255
  permit any
 !
+!
+route-map CSR_IN permit 10
+ set metric 10
 !
 route-map CSR_OUT permit 10
  match ip address 1
@@ -161,5 +163,3 @@ line vty 0 4
 !
 !
 end
-
-NAT2#

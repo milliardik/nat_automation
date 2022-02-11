@@ -1,13 +1,6 @@
-=~=~=~=~=~=~=~=~=~=~=~= PuTTY log 2022.02.10 11:39:28 =~=~=~=~=~=~=~=~=~=~=~=
-termi
-NAT1#terminal len
-NAT1#terminal length 0
-NAT1#sh run
 Building configuration...
 
-Current configuration : 2407 bytes
-!
-! Last configuration change at 11:58:56 EET Thu Feb 10 2022 by cisco
+Current configuration : 2352 bytes
 !
 version 15.4
 service timestamps debug datetime msec
@@ -27,7 +20,7 @@ aaa new-model
 !
 aaa authentication login default local
 aaa authorization console
-aaa authorization exec default local 
+aaa authorization exec default local
 !
 !
 !
@@ -74,7 +67,7 @@ redundancy
 !
 track 1 interface Ethernet0/2 line-protocol
 !
-! 
+!
 !
 !
 !
@@ -107,6 +100,7 @@ interface Ethernet0/3
 !
 router bgp 65001
  bgp log-neighbor-changes
+ timers bgp 3 9
  neighbor 192.168.0.6 remote-as 65001
  neighbor 192.168.0.14 remote-as 65002
  !
@@ -162,5 +156,3 @@ line vty 0 4
 !
 !
 end
-
-NAT1#

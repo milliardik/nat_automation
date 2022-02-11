@@ -62,13 +62,13 @@
 		1.1 включить сервис/протокол bgp выполнив команду feature bgp
 		1.2 Применить следующую конфигурацию протокла
 			router bgp 65001
+			 timers bgp 3 9
 			 neighbor 192.168.0.5 remote-as 65001
 			  address-family ipv4 unicast
 			 neighbor 192.168.0.1 remote-as 65001
 			  address-family ipv4 unicast
 			 address-family ipv4 unicast
 			  network 10.0.0.0 mask 255.255.255.0
-			  maximum-paths ibgp 2
 	2. NAT1
 		2.1 Создать правила фильтрации применив следующий конфиг 
 		    ip access-list standart CSR_OUT
@@ -78,6 +78,7 @@
 			 match ip address CSR_OUT
 		2.2 Применить следующую конфигурация протокола маршрутизации
 			router bgp 65001
+			 timers bgp
 			 neighbor 192.168.0.6 remote-as 65001
 			 neighbor 192.168.0.14 remote-as 65002
 			 address-family ipv4 unicast

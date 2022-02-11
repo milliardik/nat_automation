@@ -1,14 +1,10 @@
-import itertools
-
 import click
 import yaml
 import time
-import logging
 import socket
 import sys
 
 from ipaddress import IPv4Interface
-from pathlib import Path
 
 from scrapli import Scrapli
 from scrapli.helper import textfsm_parse
@@ -16,23 +12,7 @@ from scrapli.exceptions import ScrapliAuthenticationFailed, ScrapliConnectionNot
 
 from dns.resolver import resolve
 
-
-logging.basicConfig()
-
-
-BASEDIR = Path(__file__).parent
-INPUT_DATA_FILE = BASEDIR.joinpath('input_data')
-INVENTORY_FILE = BASEDIR.joinpath('inventory_file.yaml')
-CONNECTIONS = dict()
-LAST_CREATED_INTERFACE = 0
-
-
-logging.basicConfig(level=logging.INFO)
-logging.getLogger('scrapli').setLevel(logging.CRITICAL)
-logging.getLogger('paramiko').setLevel(logging.CRITICAL)
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+from configurations import *
 
 
 def validate_ip(string):
@@ -78,7 +58,15 @@ def load_data_form_file(path_to_file: Path) -> tuple[int, list]:
         return min_ttl, result
 
 
-def get_devices(groups: list, path_to_file: Path) -> list:
+def get_devices(groups: list, path_to_file: Path) -> list[dict]:
+    def filter_by_ip(all_, ip):
+        nonlocal result
+
+        if ip in all_:
+            result.append(dict(host=ip, **all_[ip]))
+        else:
+            logger.log(logging.CRITICAL, f'Устройство {ip} отсутствует в inventory_file')
+
     result = []
 
     with open(path_to_file) as f:
@@ -86,14 +74,19 @@ def get_devices(groups: list, path_to_file: Path) -> list:
 
     all_ = data.get('all', [])
 
-    for name in groups:
-        if name in data:
-            result.extend(data.get(name))
-        elif name in all_:
-            result.append(name)
-        else:
-            print(f'{name}: отсутствует в файле инвенторизации')
-            print('Проверьте правильность веденных даных !')
+    if 'all' in groups:
+        result.extend([dict(ip=k, **all_[k]) for k in all_])
+    else:
+        for gname in groups:
+            if validate_ip(gname):
+                filter_by_ip(all_, gname)
+            elif gname in data:
+                ip_addresses = data.get(gname)
+                for ip in ip_addresses:
+                    filter_by_ip(all_, ip)
+            else:
+                print(f'{gname}: отсутствует в файле инвенторизации')
+                print('Проверьте правильность веденных даных !')
 
     return result
 
@@ -206,7 +199,7 @@ def create_loiface(csr, ip_interfaces, username, password):
 
 
 def connect_open(
-        device_ip: str,
+        host: str,
         username: str,
         password: str,
         platform='cisco_iosxe',
@@ -214,15 +207,15 @@ def connect_open(
         **kwargs) -> [Scrapli, bool]:
 
     loglevel = logging.ERROR
-    msg = f'Подключение к утройству {device_ip} выполнено'
+    msg = f'Подключение к утройству {host} выполнено'
 
     result = False
 
-    if not check_port_alive(device_ip):
-        msg = f'Устройство {device_ip} не доступно'
+    if not check_port_alive(host):
+        msg = f'Устройство {host} не доступно'
     else:
         conn = Scrapli(
-            host=device_ip,
+            host=host,
             auth_username=username,
             auth_password=password,
             transport='paramiko' if transport == 'ssh' else 'telnet',
@@ -238,14 +231,14 @@ def connect_open(
         except ScrapliAuthenticationFailed:
             msg = 'Не верный логин или пароль.\n'
         except ScrapliConnectionNotOpened:
-            msg = f'не удалось подключиться к устройству {device_ip}\n'
+            msg = f'не удалось подключиться к устройству {host}\n'
 
     logger.log(loglevel, msg)
     return result
 
 
 def connect_close(conn):
-    # ДОписать сохранение конфигурации
+    conn.send_command('copy running-config startup-config')
     conn.close()
 
 
@@ -264,25 +257,37 @@ def cli(username, password, inventory_file, groups, acl_name):
     while devices:
         min_ttl, destination_hosts = load_data_form_file(INPUT_DATA_FILE)
 
+        if min_ttl == 0:
+            continue
+
+        start_time = time.time()
+
         create_loiface('1.1.1.1', destination_hosts, username, password)
 
-        for device_ip in devices:
+        for device in devices:
+            host = device.get('host')
+            platform = device.get('platform')
 
-            conn = connect_open(device_ip, username, password)
+            conn = connect_open(host, username, password, platform=platform)
 
             if not conn:
                 continue
 
             acl_cfg = create_acl_cfg(conn, destination_hosts, acl_name)
             delete_acl(conn, acl_name)
-            logger.log(logging.INFO, 'Новый спсиок доступа применен успешно.')
             conn.send_config(acl_cfg)
+            logger.log(logging.INFO, 'Новый спсиок доступа применен успешно.')
 
             connect_close(conn)
 
+        min_ttl -= int(time.time() - start_time)
+
+        if min_ttl <= 0:
+            continue
+
         logger.log(logging.INFO, f'Ожидание {min_ttl} сек ...')
 
-        with click.progressbar(range(min_ttl), label='Ожидание: ') as bar:
+        with click.progressbar(range(min_ttl)) as bar:
             for _ in bar:
                 time.sleep(1)
 
