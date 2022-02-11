@@ -282,7 +282,7 @@ def cli(username, password, inventory_file, groups, acl_name):
 
         logger.log(logging.INFO, f'Ожидание {min_ttl} сек ...')
 
-        with click.progressbar(range(min_ttl)) as bar:
+        with click.progressbar(range(min_ttl), label='Ожидание: ') as bar:
             for _ in bar:
                 time.sleep(1)
 
