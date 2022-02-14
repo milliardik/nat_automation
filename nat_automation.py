@@ -1,12 +1,12 @@
-import pprint
-
 import click
 import yaml
 import time
 import socket
-import sys
+import logging
+import pprint
 
 from ipaddress import IPv4Interface
+from pathlib import Path
 
 from scrapli import Scrapli
 from scrapli.helper import textfsm_parse
@@ -14,7 +14,9 @@ from scrapli.exceptions import ScrapliAuthenticationFailed, ScrapliConnectionNot
 
 from dns.resolver import resolve, NXDOMAIN
 
-from configurations import *
+from configurations import BASEDIR, INPUT_DATA_FILE, INVENTORY_FILE,  logger
+
+LAST_CREATED_INTERFACE = 0
 
 
 def validate_ip(string):
@@ -250,10 +252,13 @@ def connect_close(conn):
     type=click.Path(exists=True),
     default=str(INVENTORY_FILE), show_default=str(INVENTORY_FILE))
 def cli(username, password, inventory_file, groups, acl_name):
+    prev_destination_hosts = list()
+
     devices = get_devices(groups, inventory_file)
 
     while devices:
         min_ttl, destination_hosts = load_data_form_file(INPUT_DATA_FILE)
+        destination_hosts.sort()
 
         if min_ttl == 0:
             time.sleep(2)
@@ -262,25 +267,29 @@ def cli(username, password, inventory_file, groups, acl_name):
         start_time = time.time()
 
         # create_loiface('1.1.1.1', destination_hosts, username, password)
+        pprint.pprint(prev_destination_hosts)
+        pprint.pprint(destination_hosts)
+        print(prev_destination_hosts != destination_hosts)
 
-        for device in devices:
-            host = device.get('host')
-            platform = device.get('platform')
+        if prev_destination_hosts != destination_hosts:
 
-            conn = connect_open(host, username, password, platform=platform)
+            prev_destination_hosts = destination_hosts.copy()
 
-            if conn:
-                acl_cfg = create_acl_cfg(conn, destination_hosts.copy(), acl_name)
-                if len(acl_cfg) == 1:
-                    logger.log(logging.INFO, 'Изменения не требуются.')
-                    break
-                # else:
-                pprint.pprint(acl_cfg)
-                conn.send_configs(acl_cfg)
-                logger.log(logging.INFO, 'Изменения применены успешно.')
-                connect_close(conn)
-            else:
-                pass
+            for device in devices:
+                host = device.get('host')
+                platform = device.get('platform')
+
+                conn = connect_open(host, username, password, platform=platform)
+
+                if conn:
+                    acl_cfg = create_acl_cfg(conn, destination_hosts.copy(), acl_name)
+                    conn.send_configs(acl_cfg)
+                    logger.log(logging.INFO, 'Изменения применены успешно.')
+                    connect_close(conn)
+                else:
+                    pass
+        else:
+            logger.log(logging.INFO, 'Изменения НЕ требуются.')
 
         min_ttl -= int(time.time() - start_time - 1)
 
@@ -295,4 +304,3 @@ def cli(username, password, inventory_file, groups, acl_name):
 
 if __name__ == '__main__':
     cli()
-
