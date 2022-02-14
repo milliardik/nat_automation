@@ -3,7 +3,8 @@ import yaml
 import time
 import socket
 import logging
-import pprint
+# import requests
+# import pprint
 
 from ipaddress import IPv4Interface
 from pathlib import Path
@@ -17,6 +18,7 @@ from dns.resolver import resolve, NXDOMAIN
 from configurations import BASEDIR, INPUT_DATA_FILE, INVENTORY_FILE,  logger
 
 SOCKET_TIMEOUT = 2
+MIN_TTL = 604800
 LAST_CREATED_INTERFACE = 0
 
 
@@ -33,39 +35,71 @@ def validate_ip(string):
     return False
 
 
-def load_data_form_file(path_to_file: Path) -> tuple[int, list]:
-    def dns_lookup(hostname: str) -> tuple[int, list]:
-        response = resolve(hostname)
-
-        return response.rrset.ttl, [row.address for row in response]
-
+def load_data_from(path_to: [Path, ], from_='file') -> list:
     result = []
+    msg = 'Данные из {} {} загружены'
+    log_level = logging.INFO
 
-    with open(path_to_file) as f:
-        min_ttl = 604800
-        for row in f:
-            row = row.strip()
-            ip_address = validate_ip(row)
+    if from_ == 'file':
+        if path_to.exists():
+            with open(path_to) as handler:
+                result = [line.strip() for line in handler]
+            msg = msg.format('локального файла', path_to)
+        else:
+            log_level = logging.CRITICAL
+            msg = f'Файл {path_to} отсутствует'
+    elif from_ == 'git':
+        pass
+    else:
+        pass
 
-            if ip_address:
-                # Разобраться, какой устанавливать ttl для адресов. [min_ttl]
-                ttl, addresses = 10000, [IPv4Interface(ip_address)]
+    logger.log(log_level, msg)
+
+    return result
+
+
+def dns_lookup(hostname: str) -> tuple[int, list]:
+    response = resolve(hostname)
+
+    return response.rrset.ttl, [row.address for row in response]
+
+
+def name_resolver(line: str) -> tuple:
+    global MIN_TTL
+
+    result = None, None
+
+    if validate_ip(line):
+        result = MIN_TTL, [IPv4Interface(line)]
+    else:
+        try:
+            ttl, addresses = dns_lookup(line)
+            addresses = [IPv4Interface(f'{ip}/32') for ip in addresses]
+            result = ttl, addresses
+        except NXDOMAIN:
+            logger.log(logging.CRITICAL, f'Не распознаное имя {line}')
+
+    return result
+
+
+def prepare_data(path_to: str, from_: str)-> tuple[int, list]:
+    global MIN_TTL
+
+    min_ttl = MIN_TTL
+    destination_hosts = list()
+
+    for row in load_data_from(path_to, from_):
+            load_data = name_resolver(row)
+
+            if load_data[1]: # Not Nonetype
+                min_ttl = min_ttl if min_ttl < load_data[0] else load_data[0]
+                destination_hosts.extend(load_data[1])
             else:
-                try:
-                    ttl, addresses = dns_lookup(row)
-                    addresses = [IPv4Interface(f'{ip}/32') for ip in addresses]
-                except NXDOMAIN:
-                    logger.log(logging.CRITICAL, f'Не распознаное имя {row}')
-                    continue
+                logger.log(logging.CRITICAL, load_data)
 
-            min_ttl = ttl if ttl < min_ttl else min_ttl
+    destination_hosts.sort()
 
-            result.extend(addresses)
-
-        logger.log(logging.INFO, f'Данные {path_to_file} загрежены')
-        logger.log(logging.INFO, f'Минимальный ttl = {min_ttl}')
-
-        return min_ttl, result
+    return min_ttl, destination_hosts
 
 
 def get_devices(groups: list, path_to_file: Path) -> list[dict]:
@@ -241,7 +275,7 @@ def connect_open(
     return result
 
 
-def connect_close(conn):
+def connect_close(conn: Scrapli) -> None:
     # conn.send_command('copy running-config startup-config')
     conn.close()
 
@@ -251,18 +285,19 @@ def connect_close(conn):
 @click.option('-u', '--username', prompt='Username', required=True)
 @click.password_option('-p', '--password', confirmation_prompt=False)
 @click.option('--acl-name', type=str, default='130')
+@click.option('--path_to', type=str, default=INPUT_DATA_FILE, show_default=True)
+@click.option('--from_', type=click.Choice(['file', 'github']), default='file', show_default=True)
 @click.option(
     '--inventory-file',
     type=click.Path(exists=True),
     default=str(INVENTORY_FILE), show_default=str(INVENTORY_FILE))
-def cli(username, password, inventory_file, groups, acl_name):
+def cli(username, password, inventory_file, path_to, from_, groups, acl_name):
     prev_destination_hosts = list()
 
     devices = get_devices(groups, inventory_file)
 
     while devices:
-        min_ttl, destination_hosts = load_data_form_file(INPUT_DATA_FILE)
-        destination_hosts.sort()
+        min_ttl, destination_hosts = prepare_data(path_to, from_)
 
         if min_ttl == 0:
             time.sleep(2)
@@ -299,7 +334,7 @@ def cli(username, password, inventory_file, groups, acl_name):
                 for _ in bar:
                     time.sleep(1)
 
-        click.clear()
+        # click.clear()
 
 
 if __name__ == '__main__':
