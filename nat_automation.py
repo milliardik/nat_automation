@@ -35,13 +35,13 @@ def validate_ip(string):
     return False
 
 
-def load_data_from(path_to: [Path, ], from_='file') -> list:
+def load_data_from(path_to: str, from_='file') -> list:
     result = []
     msg = 'Данные из {} {} загружены'
     log_level = logging.INFO
 
     if from_ == 'file':
-        if path_to.exists():
+        if Path(path_to).exists():
             with open(path_to) as handler:
                 result = [line.strip() for line in handler]
             msg = msg.format('локального файла', path_to)
@@ -58,13 +58,12 @@ def load_data_from(path_to: [Path, ], from_='file') -> list:
     return result
 
 
-def dns_lookup(hostname: str) -> tuple[int, list]:
-    response = resolve(hostname)
-
-    return response.rrset.ttl, [row.address for row in response]
-
-
 def name_resolver(line: str) -> tuple:
+    def dns_lookup(hostname: str) -> tuple[int, list]:
+        response = resolve(hostname)
+
+        return response.rrset.ttl, [row.address for row in response]
+
     global MIN_TTL
 
     result = None, None
@@ -82,7 +81,7 @@ def name_resolver(line: str) -> tuple:
     return result
 
 
-def prepare_data(path_to: str, from_: str)-> tuple[int, list]:
+def prepare_data(path_to: str, from_: str) -> tuple[int, list]:
     global MIN_TTL
 
     min_ttl = MIN_TTL
