@@ -16,6 +16,7 @@ from dns.resolver import resolve, NXDOMAIN
 
 from configurations import BASEDIR, INPUT_DATA_FILE, INVENTORY_FILE,  logger
 
+SOCKET_TIMEOUT = 2
 LAST_CREATED_INTERFACE = 0
 
 
@@ -156,10 +157,13 @@ def create_acl_cfg(conn: Scrapli, dst_interfaces: list[IPv4Interface], acl_name:
 
 
 def check_port_alive(host: str, port=22) -> bool:
+    global SOCKET_TIMEOUT
+
     result = False
 
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(SOCKET_TIMEOUT)
 
         code = s.connect_ex((host, port))
 
@@ -266,14 +270,10 @@ def cli(username, password, inventory_file, groups, acl_name):
 
         start_time = time.time()
 
-        # create_loiface('1.1.1.1', destination_hosts, username, password)
-        pprint.pprint(prev_destination_hosts)
-        pprint.pprint(destination_hosts)
-        print(prev_destination_hosts != destination_hosts)
-
         if prev_destination_hosts != destination_hosts:
 
             prev_destination_hosts = destination_hosts.copy()
+            # create_loiface('1.1.1.1', destination_hosts, username, password)
 
             for device in devices:
                 host = device.get('host')
