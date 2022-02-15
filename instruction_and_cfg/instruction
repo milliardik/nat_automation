@@ -103,6 +103,9 @@
 			route-map CSR_OUT permit 10
 			 match ip address CSR_OUT
 			 set metric 50
+			route-map CSR_IN permit 10
+             set metric 10
+            !
 		3.2 Применить следующую конфигурация протокола маршрутизации
 			router bgp 65001
 			 timers bgp 3 9
@@ -113,6 +116,7 @@
 			  network 30.30.30.30 mask 255.255.255.255
 			  neighbor 192.168.0.2 next-hop-self
 			  neighbor 192.168.0.10 route-map CSR_OUT out
+			  neighbor 192.168.0.10 route-map CSR_IN in
 		3.3 Создать правило отслеживания состояни порта
 			track 1 interface gigabitethernet2 line-protocol 
 		3.4 Создать статические маршруты

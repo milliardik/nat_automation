@@ -81,13 +81,13 @@ def name_resolver(line: str) -> tuple:
     return result
 
 
-def prepare_data(path_to: str, from_: str) -> tuple[int, list]:
+def prepare_data(path_to: str, name: str) -> tuple[int, list]:
     global MIN_TTL
 
     min_ttl = MIN_TTL
     destination_hosts = list()
 
-    for row in load_data_from(path_to, from_):
+    for row in load_data_from(path_to, name):
             load_data = name_resolver(row)
 
             if load_data[1]: # Not Nonetype
@@ -285,18 +285,18 @@ def connect_close(conn: Scrapli) -> None:
 @click.password_option('-p', '--password', confirmation_prompt=False)
 @click.option('--acl-name', type=str, default='130')
 @click.option('--path_to', type=str, default=INPUT_DATA_FILE, show_default=True)
-@click.option('--from_', type=click.Choice(['file', 'github']), default='file', show_default=True)
+@click.option('--name', type=click.Choice(['file', 'github']), default='file', show_default=True)
 @click.option(
     '--inventory-file',
     type=click.Path(exists=True),
     default=str(INVENTORY_FILE), show_default=str(INVENTORY_FILE))
-def cli(username, password, inventory_file, path_to, from_, groups, acl_name):
+def cli(username, password, inventory_file, path_to, name, groups, acl_name):
     prev_destination_hosts = list()
 
     devices = get_devices(groups, inventory_file)
 
     while devices:
-        min_ttl, destination_hosts = prepare_data(path_to, from_)
+        min_ttl, destination_hosts = prepare_data(path_to, name)
 
         if min_ttl == 0:
             time.sleep(2)
@@ -333,7 +333,7 @@ def cli(username, password, inventory_file, path_to, from_, groups, acl_name):
                 for _ in bar:
                     time.sleep(1)
 
-        # click.clear()
+        click.clear()
 
 
 if __name__ == '__main__':
