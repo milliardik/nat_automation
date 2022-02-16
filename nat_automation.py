@@ -5,6 +5,8 @@
     Из полученных данных скрипт формирует конфигурацию списка достпуа, которую в последующем применят к устройству или
     группе устройств (см. аргумент groups командной строки) и обязательно размещенных в файле
     inventory_file.yaml (см. опцию --inventory-file)
+    Пример использоватния
+    python .\nat_automation.py nat --path-to https://api.github.com/repos/milliardik/nat_automation/contents/input_date
 """
 
 import click
