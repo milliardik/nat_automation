@@ -6,9 +6,9 @@
     группе устройств (см. аргумент groups командной строки) и обязательно размещенных в файле
     inventory_file.yaml (см. опцию --inventory-file)
     Пример использоватния
-    python .\nat_automation.py nat --path-to https://api.github.com/repos/milliardik/nat_automation/contents/input_date
+    python .\nat_automation.py nat --path-to https://api.github.com/repos/milliardik/nat_automation/contents/input_data
 """
-
+import pprint
 import click
 import yaml
 import time
@@ -54,6 +54,8 @@ def load_from_git(path_to):
     # ВОЗМОЖНО ЧТО ТО ЕЩЕ.
     # СЫРО
     file_response = requests.get(path_to, auth=(GIT_ACCESS_USERNAME, GIT_ACCESS_TOKEN))
+    pprint.pprint(requests.get('https://api.github.com/repos/milliardik/nat_automation',
+                               auth=(GIT_ACCESS_USERNAME, GIT_ACCESS_TOKEN)))
 
     if file_response.ok:
         string = base64.b64decode(file_response.json()['content']).decode('utf-8')

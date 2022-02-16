@@ -8,7 +8,7 @@ INPUT_DATA_FILE = BASEDIR.joinpath('input_data')
 INVENTORY_FILE = BASEDIR.joinpath('inventory_file.yaml')
 CONNECTIONS = dict()
 
-GIT_ACCESS_TOKEN = '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'
+GIT_ACCESS_TOKEN = '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'
 GIT_ACCESS_USERNAME = 'milliardik'
 
 logging.basicConfig()
