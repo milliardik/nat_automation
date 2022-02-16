@@ -54,15 +54,14 @@ def load_from_git(path_to):
     # ВОЗМОЖНО ЧТО ТО ЕЩЕ.
     # СЫРО
     file_response = requests.get(path_to, auth=(GIT_ACCESS_USERNAME, GIT_ACCESS_TOKEN))
-    pprint.pprint(requests.get('https://api.github.com/repos/milliardik/nat_automation',
-                               auth=(GIT_ACCESS_USERNAME, GIT_ACCESS_TOKEN)))
 
     if file_response.ok:
         string = base64.b64decode(file_response.json()['content']).decode('utf-8')
         result = [line.strip() for line in string.split('\n')]
-    # else:
-    #     print(file_response.status_code)
-    #     print(file_response.text)
+    else:
+        if file_response.status_code == 401:
+            log_level = logging.CRITICAL
+            msg = f'ПРоверте данные авторизации на ресурсе {path_to}'
 
     return result
 
