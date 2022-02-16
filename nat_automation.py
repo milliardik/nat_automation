@@ -344,12 +344,19 @@ def cli(username, password, inventory_file, path_to, groups, acl_name):
 
                 if conn:
                     acl_cfg = create_acl_cfg(conn, destination_hosts.copy(), acl_name)
-                    conn.send_configs(acl_cfg)
-                    logger.log(logging.INFO, 'Изменения применены успешно.')
-                    connect_close(conn)
+                    if len(acl_cfg) > 1:
+                        conn.send_configs(acl_cfg)
+                        logger.log(logging.INFO, 'Изменения применены успешно.')
+                        connect_close(conn)
+                    else:
+                        # Отсутствует спсиок доступа на устройстве
+                        # Предусмотреть отправку ошибки на почту или сигнализировать др спопособом
+                        min_ttl = MIN_TTL
                 else:
-                    # ЧТоб можно было увидеть/обратить внимание на сообщение ошибки
-                    min_ttl = MIN_TTL
+                    # Нет подключения к устройству
+                    # Предусмотреть отправку ошибки на почту или сигнализировать др спопособом
+                    # чтоб можно было увидеть/обратить внимание на сообщение ошибки
+                    pass
         else:
             logger.log(logging.INFO, 'Изменения НЕ требуются.')
 
