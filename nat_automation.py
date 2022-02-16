@@ -1,12 +1,21 @@
+"""
+Скрипт выполняет следующую работу
+    Загружает данные из источника по умолчанию локального файла (расположенного в месте размещения скрипта см. опцию --path-to)
+    (Для github Обязательно заполнение переменных конфигурационного файла GIT_ACCESS_USERNAME, GIT_ACCESS_TOKEN)
+    Из полученных данных скрипт формирует конфигурацию списка достпуа, которую в последующем применят к устройству или
+    группе устройств (см. аргумент groups командной строки) и обязательно размещенных в файле
+    inventory_file.yaml (см. опцию --inventory-file)
+"""
+
 import click
 import yaml
 import time
+import base64
 import socket
 import logging
-# import requests
-# import pprint
+import requests
 
-from typing import Tuple, List, Dict, Optional, Union, Any
+from typing import Tuple, List, Dict, Optional, Union
 from ipaddress import IPv4Interface
 from pathlib import Path
 
@@ -17,6 +26,7 @@ from scrapli.exceptions import ScrapliAuthenticationFailed, ScrapliConnectionNot
 from dns.resolver import resolve, NXDOMAIN
 
 from configurations import BASEDIR, INPUT_DATA_FILE, INVENTORY_FILE,  logger
+from configurations import GIT_ACCESS_USERNAME, GIT_ACCESS_TOKEN
 
 SOCKET_TIMEOUT = 2
 MIN_TTL = 604800
@@ -36,23 +46,36 @@ def validate_ip(string: str) -> Optional[Union[bool, str]]:
     return False
 
 
-def load_data_from(path_to: str, from_='file') -> list:
+def load_from_git(path_to):
     result = []
-    msg = 'Данные из {} {} загружены'
-    log_level = logging.INFO
+    # НЕОБХОДИМЫ ДОП ПРОВЕРКИ, НАЛИЧИЕ ПЕРЕМЕННЫХ GIT_ACCESS_USERNAME, GIT_ACCESS_TOKEN
+    # ВОЗМОЖНО ЧТО ТО ЕЩЕ.
+    # СЫРО
+    file_response = requests.get(path_to, auth=(GIT_ACCESS_USERNAME, GIT_ACCESS_TOKEN))
 
-    if from_ == 'file':
-        if Path(path_to).exists():
-            with open(path_to) as handler:
-                result = [line.strip() for line in handler]
-            msg = msg.format('локального файла', path_to)
-        else:
-            log_level = logging.CRITICAL
-            msg = f'Файл {path_to} отсутствует'
-    elif from_ == 'git':
-        pass
+    if file_response.ok:
+        string = base64.b64decode(file_response.json()['content']).decode('utf-8')
+        result = [line.strip() for line in string.split('\n')]
+    # else:
+    #     print(file_response.status_code)
+    #     print(file_response.text)
+
+    return result
+
+
+def load_data_from(path_to: str, from_='file') -> List:
+    log_level = logging.INFO
+    msg = f'Данные пути {path_to} загружены успешно'
+
+    if Path(path_to).exists():
+        with open(path_to) as handler:
+            result = [line.strip() for line in handler]
     else:
-        pass
+        result = load_from_git(path_to)
+
+    if not result:
+        log_level = logging.CRITICAL
+        msg = f'Что то пошло не так, проверьте правильность набранного пути {path_to}'
 
     logger.log(log_level, msg)
 
@@ -82,13 +105,13 @@ def name_resolver(line: str) -> tuple:
     return result
 
 
-def prepare_data(path_to: str, name: str) -> Tuple[int, list]:
+def prepare_data(path_to: str) -> Tuple[int, list]:
     global MIN_TTL
 
     min_ttl = MIN_TTL
     destination_hosts = list()
 
-    for row in load_data_from(path_to, name):
+    for row in load_data_from(path_to):
             load_data = name_resolver(row)
 
             if load_data[1]: # Not Nonetype
@@ -285,19 +308,19 @@ def connect_close(conn: Scrapli) -> None:
 @click.option('-u', '--username', prompt='Username', required=True)
 @click.password_option('-p', '--password', confirmation_prompt=False)
 @click.option('--acl-name', type=str, default='130')
-@click.option('--path_to', type=str, default=INPUT_DATA_FILE, show_default=True)
-@click.option('--name', type=click.Choice(['file', 'github']), default='file', show_default=True)
+@click.option('--path-to', type=str, default=INPUT_DATA_FILE, show_default=True)
+# @click.option('--name', type=click.Choice(['file', 'github']), default='file', show_default=True)
 @click.option(
     '--inventory-file',
     type=click.Path(exists=True),
     default=str(INVENTORY_FILE), show_default=str(INVENTORY_FILE))
-def cli(username, password, inventory_file, path_to, name, groups, acl_name):
+def cli(username, password, inventory_file, path_to, groups, acl_name):
     prev_destination_hosts = list()
 
     devices = get_devices(groups, inventory_file)
 
     while devices:
-        min_ttl, destination_hosts = prepare_data(path_to, name)
+        min_ttl, destination_hosts = prepare_data(path_to)
 
         if min_ttl == 0:
             time.sleep(2)
@@ -322,7 +345,8 @@ def cli(username, password, inventory_file, path_to, name, groups, acl_name):
                     logger.log(logging.INFO, 'Изменения применены успешно.')
                     connect_close(conn)
                 else:
-                    pass
+                    # ЧТоб можно было увидеть/обратить внимание на сообщение ошибки
+                    min_ttl = MIN_TTL
         else:
             logger.log(logging.INFO, 'Изменения НЕ требуются.')
 
@@ -334,7 +358,7 @@ def cli(username, password, inventory_file, path_to, name, groups, acl_name):
                 for _ in bar:
                     time.sleep(1)
 
-        click.clear()
+        # click.clear()
 
 
 if __name__ == '__main__':
