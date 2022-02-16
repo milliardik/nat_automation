@@ -6,6 +6,7 @@ import logging
 # import requests
 # import pprint
 
+from typing import Tuple, List, Dict, Optional, Union, Any
 from ipaddress import IPv4Interface
 from pathlib import Path
 
@@ -22,7 +23,7 @@ MIN_TTL = 604800
 LAST_CREATED_INTERFACE = 0
 
 
-def validate_ip(string):
+def validate_ip(string: str) -> Optional[Union[bool, str]]:
     prefix = '32'
     if '/' in string:
         string, prefix = string.split('/')
@@ -59,7 +60,7 @@ def load_data_from(path_to: str, from_='file') -> list:
 
 
 def name_resolver(line: str) -> tuple:
-    def dns_lookup(hostname: str) -> tuple[int, list]:
+    def dns_lookup(hostname: str) -> Tuple[int, list]:
         response = resolve(hostname)
 
         return response.rrset.ttl, [row.address for row in response]
@@ -81,7 +82,7 @@ def name_resolver(line: str) -> tuple:
     return result
 
 
-def prepare_data(path_to: str, name: str) -> tuple[int, list]:
+def prepare_data(path_to: str, name: str) -> Tuple[int, list]:
     global MIN_TTL
 
     min_ttl = MIN_TTL
@@ -101,7 +102,7 @@ def prepare_data(path_to: str, name: str) -> tuple[int, list]:
     return min_ttl, destination_hosts
 
 
-def get_devices(groups: list, path_to_file: Path) -> list[dict]:
+def get_devices(groups: list, path_to_file: Path) -> List[Dict]:
     def filter_by_ip(all_, ip):
         nonlocal result
 
@@ -160,7 +161,7 @@ def iface_to_str(ip_interface: IPv4Interface, with_='with_hostmask') -> str:
     return result_str
 
 
-def create_acl_cfg(conn: Scrapli, dst_interfaces: list[IPv4Interface], acl_name: str) -> list:
+def create_acl_cfg(conn: Scrapli, dst_interfaces: list[IPv4Interface], acl_name: str) -> List:
     rows = [f'ip access-list ex {acl_name}']
     row_tpl = 'permit ip {source} {destination}'
     textfsm_tpl = BASEDIR.joinpath('cisco_ios_show_ip_access-lists.textfsm')
@@ -241,7 +242,7 @@ def connect_open(
         password: str,
         platform='cisco_iosxe',
         transport='ssh',
-        **kwargs) -> [Scrapli, bool]:
+        **kwargs) -> Optional[Union[Scrapli, bool]]:
 
     loglevel = logging.CRITICAL
     msg = f'Подключение к утройству {host} выполнено'
