@@ -5,10 +5,10 @@
     Из полученных данных скрипт формирует конфигурацию списка достпуа, которую в последующем применят к устройству или
     группе устройств (см. аргумент groups командной строки) и обязательно размещенных в файле
     inventory_file.yaml (см. опцию --inventory-file)
-    Пример использоватния
-    python .\nat_automation.py nat --path-to https://api.github.com/repos/milliardik/nat_automation/contents/input_data
+    Пример использоватния (Windows)
+    python .\nat_automation.py 172.30.22.7 --path-to https://api.github.com/repos/milliardik/nat_automation/contents/input_data
+    --git-user milliardik --git-token [auth token https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token]
 """
-import pprint
 import click
 import yaml
 import time
@@ -28,7 +28,7 @@ from scrapli.exceptions import ScrapliAuthenticationFailed, ScrapliConnectionNot
 from dns.resolver import resolve, NXDOMAIN
 
 from configurations import BASEDIR, INPUT_DATA_FILE, INVENTORY_FILE,  logger
-from configurations import GIT_ACCESS_USERNAME, GIT_ACCESS_TOKEN
+# from configurations import GIT_ACCESS_TOKEN, GIT_ACCESS_USERNAME
 
 SOCKET_TIMEOUT = 2
 MIN_TTL = 604800
@@ -48,12 +48,12 @@ def validate_ip(string: str) -> Optional[Union[bool, str]]:
     return False
 
 
-def load_from_git(path_to):
+def load_from_git(path_to, git_user, git_token):
     result = []
     # НЕОБХОДИМЫ ДОП ПРОВЕРКИ, НАЛИЧИЕ ПЕРЕМЕННЫХ GIT_ACCESS_USERNAME, GIT_ACCESS_TOKEN
     # ВОЗМОЖНО ЧТО ТО ЕЩЕ.
     # СЫРО
-    file_response = requests.get(path_to, auth=(GIT_ACCESS_USERNAME, GIT_ACCESS_TOKEN))
+    file_response = requests.get(path_to, auth=(git_user, git_token))
 
     if file_response.ok:
         string = base64.b64decode(file_response.json()['content']).decode('utf-8')
@@ -66,7 +66,7 @@ def load_from_git(path_to):
     return result
 
 
-def load_data_from(path_to: str, from_='file') -> List:
+def load_data_from(path_to: str, git_user=None, git_token=None) -> List:
     log_level = logging.INFO
     msg = f'Данные пути {path_to} загружены успешно'
 
@@ -74,7 +74,7 @@ def load_data_from(path_to: str, from_='file') -> List:
         with open(path_to) as handler:
             result = [line.strip() for line in handler]
     else:
-        result = load_from_git(path_to)
+        result = load_from_git(path_to, git_user, git_token)
 
     if not result:
         log_level = logging.CRITICAL
@@ -312,12 +312,14 @@ def connect_close(conn: Scrapli) -> None:
 @click.password_option('-p', '--password', confirmation_prompt=False)
 @click.option('--acl-name', type=str, default='130')
 @click.option('--path-to', type=str, default=INPUT_DATA_FILE, show_default=True)
+@click.option('--git-user', type=str)
+@click.option('--git-token', type=str)
 # @click.option('--name', type=click.Choice(['file', 'github']), default='file', show_default=True)
 @click.option(
     '--inventory-file',
     type=click.Path(exists=True),
     default=str(INVENTORY_FILE), show_default=str(INVENTORY_FILE))
-def cli(username, password, inventory_file, path_to, groups, acl_name):
+def cli(username, password, inventory_file, path_to, git_user, git_token, groups, acl_name):
     prev_destination_hosts = list()
 
     devices = get_devices(groups, inventory_file)
