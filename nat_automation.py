@@ -161,7 +161,7 @@ def iface_to_str(ip_interface: IPv4Interface, with_='with_hostmask') -> str:
     return result_str
 
 
-def create_acl_cfg(conn: Scrapli, dst_interfaces: list[IPv4Interface], acl_name: str) -> List:
+def create_acl_cfg(conn: Scrapli, dst_interfaces: List[IPv4Interface], acl_name: str) -> List:
     rows = [f'ip access-list ex {acl_name}']
     row_tpl = 'permit ip {source} {destination}'
     textfsm_tpl = BASEDIR.joinpath('cisco_ios_show_ip_access-lists.textfsm')
