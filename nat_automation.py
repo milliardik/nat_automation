@@ -188,7 +188,7 @@ def iface_to_str(ip_interface: IPv4Interface, with_='with_hostmask') -> str:
     return result_str
 
 
-def create_acl_cfg(conn: Scrapli, dst_interfaces: List[IPv4Interface], acl_name: str) -> List:
+def create_acl_cfg(conn: Scrapli, acl_name: str, dst_ifaces: List[IPv4Interface], prev_dst_ifaces=[]) -> List:
     rows = [f'ip access-list ex {acl_name}']
     row_tpl = 'permit ip {source} {destination}'
     textfsm_tpl = BASEDIR.joinpath('cisco_ios_show_ip_access-lists.textfsm')
@@ -205,12 +205,14 @@ def create_acl_cfg(conn: Scrapli, dst_interfaces: List[IPv4Interface], acl_name:
         src = get_srs_or_dest(cur_acl_row)
         dst = get_srs_or_dest(cur_acl_row, dst=True)
 
-        if dst in dst_interfaces:
-            dst_interfaces.remove(dst)
+        if dst in dst_ifaces:
+            dst_ifaces.remove(dst)
         else:
+            if prev_dst_ifaces and dst not in prev_dst_ifaces:
+                logger.log(logging.CRITICAL, f'Адрес {dst} добавлен вручную')
             rows.append('no ' + row_tpl.format(source=iface_to_str(src), destination=iface_to_str(dst)))
 
-    for dst in dst_interfaces:
+    for dst in dst_ifaces:
         for src in srs_interfaces:
             rows.append(row_tpl.format(source=iface_to_str(src), destination=iface_to_str(dst)))
 
@@ -321,8 +323,7 @@ def connect_close(conn: Scrapli) -> None:
     type=click.Path(exists=True),
     default=str(INVENTORY_FILE), show_default=str(INVENTORY_FILE))
 def cli(username, password, inventory_file, path_to, git_user, git_token, groups, acl_name):
-    prev_destination_hosts = list()
-
+    prev_dst_ifaces = list()
     devices = get_devices(groups, inventory_file)
 
     while devices:
@@ -334,34 +335,31 @@ def cli(username, password, inventory_file, path_to, git_user, git_token, groups
 
         start_time = time.time()
 
-        if prev_destination_hosts != destination_hosts:
+        # create_loiface('1.1.1.1', destination_hosts, username, password)
 
-            prev_destination_hosts = destination_hosts.copy()
-            # create_loiface('1.1.1.1', destination_hosts, username, password)
+        for device in devices:
+            host = device.get('host')
+            platform = device.get('platform')
 
-            for device in devices:
-                host = device.get('host')
-                platform = device.get('platform')
+            conn = connect_open(host, username, password, platform=platform)
 
-                conn = connect_open(host, username, password, platform=platform)
+            if conn:
+                acl_cfg = create_acl_cfg(conn, acl_name, destination_hosts.copy(), prev_dst_ifaces)
+                prev_dst_ifaces = destination_hosts.copy()
 
-                if conn:
-                    acl_cfg = create_acl_cfg(conn, destination_hosts.copy(), acl_name)
-                    if len(acl_cfg) > 1:
-                        conn.send_configs(acl_cfg)
-                        logger.log(logging.INFO, 'Изменения применены успешно.')
-                        connect_close(conn)
-                    else:
-                        # Отсутствует спсиок доступа на устройстве
-                        # Предусмотреть отправку ошибки на почту или сигнализировать др спопособом
-                        min_ttl = MIN_TTL
+                if len(acl_cfg) > 1:
+                    conn.send_configs(acl_cfg)
+                    logger.log(logging.INFO, 'Изменения применены успешно.')
+                    connect_close(conn)
                 else:
-                    # Нет подключения к устройству
+                    # Отсутствует спсиок доступа на устройстве
                     # Предусмотреть отправку ошибки на почту или сигнализировать др спопособом
-                    # чтоб можно было увидеть/обратить внимание на сообщение ошибки
                     pass
-        else:
-            logger.log(logging.INFO, 'Изменения НЕ требуются.')
+            else:
+                # Нет подключения к устройству
+                # Предусмотреть отправку ошибки на почту или сигнализировать др спопособом
+                # чтоб можно было увидеть/обратить внимание на сообщение ошибки
+                pass
 
         min_ttl -= int(time.time() - start_time - 1)
 
